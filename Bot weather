@@ -1,0 +1,67 @@
+#Сдесь библиотеки для бота без них он работать не будет
+import asyncio
+import aiohttp
+from aiogram import Bot, Dispatcher, types
+from aiogram.filters import Command
+#Тут Api Token он нужен как индитефикатор кода с браузера тоесть в случае погоды на сайте создается с разными цифрами и буквами ключ случайный когда он вводится бот понимает откуда брать информацию (тоесть температуру погоды ) зачем нужен visual krossing key? Он нужен чтобы определять в текущее время погоду
+API_TOKEN = 'Id Key'
+VISUAL_CROSSING_KEY = 'Id key'
+#Сдесь этот код запрашивает с сайта погоду на месяц время и т.д
+async def get_monthly_weather(city: str):
+    # Запрос погоды на месяц для указанного города (нормализуем/кодируем)
+    from urllib.parse import quote
+    city_encoded = quote(city)
+    url = (
+        "https://weather.visualcrossing.com/VisualCrossingWebServices/rest/"
+        f"services/timeline/{city_encoded}/next30days?unitGroup=metric"
+        f"&key={VISUAL_CROSSING_KEY}&contentType=json&lang=uk"
+    )
+#Сдесь написал код чтобы он запрашивал каждые 5 дней погоду тоесть в телеграм боте пишем команду и он показывает данную информацию
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as response:
+            if response.status == 200:
+                data = await response.json()
+                forecast_text = f"📅 Прогноз погоды в городе {data['resolvedAddress']} на месяц:\n\n"
+                # Берем каждый 5-й день для краткого прогноза погоды
+                for day in data['days'][::5]: 
+                    date = day['datetime']
+                    temp = day['temp']
+                    conditions = day['conditions']
+                    forecast_text += f"🔹 {date}: {temp}°C, {conditions}\n"
+                return forecast_text
+            else:
+                return "❌ Не удалось получить прогноз погоды."
+#Тут бот понимает и воссоеденяет api token с ботом
+async def main():
+    bot = Bot(token=API_TOKEN)
+    dp = Dispatcher()
+#Перед командой /mont нужно ввести /start затем ввести /mont Кишинев (код который вы написали )
+    @dp.message(Command("month"))
+    async def cmd_month(message: types.Message):
+        # Использование: /month Кишинев
+        city = message.text.replace("/month", "").strip()
+        if not city:
+            await message.answer("Пожалуйста напишите название города. Например: /month Киев")
+            return
+#Варианты если вы введете cishinau то бот покажет информацию на языке котором вы написали в /month
+        # варианты для Кишинёва
+        mapping = {
+            "кишинев": "Chisinau,Moldova",
+            "кишинеу": "Chisinau,Moldova",
+            "chisinau": "Chisinau,Moldova",
+            "кишинів": "Chisinau,Moldova",
+        }
+        city = mapping.get(city.lower(), city)
+
+        await message.answer("⏳ Готовлю прогноз погоды на месяц...")
+        result = await get_monthly_weather(city)
+        await message.answer(result)
+
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except Exception as exc:
+        print("Ошибка при запуске бота:", exc)
+        raise
